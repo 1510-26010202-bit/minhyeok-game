@@ -1,0 +1,1788 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>청소도구 대난투 3D (Janitor Tool Brawl 3D)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Noto+Sans+KR:wght@400;700;900&display=swap" rel="stylesheet">
+    <style>
+        * {
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: manipulation;
+        }
+        body {
+            font-family: 'Noto Sans KR', sans-serif;
+            background-color: #050508;
+            color: #ffffff;
+            overflow: hidden;
+            margin: 0;
+            padding: 0;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .font-title {
+            font-family: 'Black Han Sans', sans-serif;
+        }
+        #canvas-container {
+            position: relative;
+            width: 100%;
+            max-width: 1024px;
+            height: 576px;
+            box-shadow: 0 0 40px rgba(0, 0, 0, 0.9), 0 0 25px rgba(245, 158, 11, 0.25);
+            border-radius: 16px;
+            overflow: hidden;
+            background: #000;
+        }
+        canvas {
+            width: 100% !important;
+            height: 100% !important;
+            display: block;
+        }
+        .arcade-btn {
+            background: linear-gradient(180deg, #ff5500 0%, #b30000 100%);
+            border: 3px solid #ffcc00;
+            box-shadow: 0 6px 0 #660000, 0 10px 15px rgba(0, 0, 0, 0.6);
+            text-shadow: 2px 2px 0px #000;
+            transition: all 0.12s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .arcade-btn:hover {
+            transform: translateY(-3px) scale(1.02);
+            box-shadow: 0 9px 0 #660000, 0 14px 22px rgba(255, 85, 0, 0.6);
+            filter: brightness(1.15);
+        }
+        .arcade-btn:active {
+            transform: translateY(3px) scale(0.98);
+            box-shadow: 0 2px 0 #660000, 0 4px 10px rgba(0, 0, 0, 0.5);
+        }
+        .arcade-btn-secondary {
+            background: linear-gradient(180deg, #3b82f6 0%, #1d4ed8 100%);
+            border: 3px solid #60a5fa;
+            box-shadow: 0 6px 0 #1e3a8a, 0 10px 15px rgba(0, 0, 0, 0.6);
+            text-shadow: 2px 2px 0px #000;
+            transition: all 0.12s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .arcade-btn-secondary:hover {
+            transform: translateY(-3px) scale(1.02);
+            box-shadow: 0 9px 0 #1e3a8a, 0 14px 22px rgba(59, 130, 246, 0.6);
+            filter: brightness(1.15);
+        }
+        .weapon-card {
+            background: rgba(18, 23, 38, 0.88);
+            border: 2px solid #334155;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .weapon-card:hover {
+            border-color: #f59e0b;
+            transform: translateY(-5px);
+            background: rgba(30, 42, 68, 0.95);
+        }
+        .weapon-card.selected {
+            border-color: #fbbf24;
+            box-shadow: 0 0 25px rgba(251, 191, 36, 0.55);
+            background: rgba(45, 34, 12, 0.95);
+        }
+        @keyframes shake {
+            0% { transform: translate(0px, 0px); }
+            20% { transform: translate(-6px, 4px); }
+            40% { transform: translate(5px, -4px); }
+            60% { transform: translate(-4px, 3px); }
+            80% { transform: translate(4px, -2px); }
+            100% { transform: translate(0px, 0px); }
+        }
+        .shake {
+            animation: shake 0.22s cubic-bezier(.36,.07,.19,.97) both;
+        }
+        /* 스킬 쿨타임 스타일 */
+        .skill-box {
+            position: relative;
+            overflow: hidden;
+        }
+        .cooldown-overlay {
+            position: absolute;
+            inset: 0;
+            background: rgba(15, 23, 42, 0.75);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            color: #facc15;
+            font-size: 11px;
+        }
+    </style>
+</head>
+<body class="bg-slate-950 text-white select-none overflow-hidden">
+
+    <div id="canvas-container">
+        <!-- 3D Three.js Container -->
+        <div id="threejs-container" class="w-full h-full"></div>
+
+        <!-- UI Overlay Layer -->
+        <div id="uiOverlay" class="absolute inset-0 pointer-events-none flex flex-col justify-between p-4 z-10">
+            
+            <!-- HUD (Top Bar) -->
+            <div id="hud" class="flex justify-between items-start w-full opacity-0 transition-opacity duration-300">
+                <!-- Player HP Bar & Skills -->
+                <div class="w-2/5 flex flex-col items-start gap-1">
+                    <div class="flex items-center gap-2">
+                        <span class="font-title text-xl text-amber-400 drop-shadow">플레이어</span>
+                        <span id="playerWeaponBadge" class="text-xs bg-slate-800 border border-amber-500/50 text-amber-300 px-2 py-0.5 rounded font-bold">먼지털이</span>
+                    </div>
+                    <!-- HP -->
+                    <div class="w-full bg-slate-900 border-2 border-slate-700 h-6 rounded-lg overflow-hidden p-0.5 shadow-inner relative">
+                        <div id="playerHpBar" class="h-full bg-gradient-to-r from-emerald-500 to-green-400 rounded transition-all duration-150" style="width: 100%;"></div>
+                        <div id="playerHpRed" class="absolute top-0.5 left-0.5 bottom-0.5 bg-red-600/50 rounded transition-all duration-500 -z-10" style="width: 100%;"></div>
+                    </div>
+                    
+                    <!-- Skill Icons Display with Cooldowns -->
+                    <div class="flex gap-2 mt-1 w-full">
+                        <div id="skillE" class="skill-box flex-1 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-slate-300 flex flex-col items-center justify-center">
+                            <div><span class="text-cyan-400 font-bold">[E]</span> <span id="nameSkillE">방어막</span></div>
+                            <div id="cdE" class="cooldown-overlay hidden">0.0s</div>
+                        </div>
+                        <div id="skillQ" class="skill-box flex-1 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-slate-300 flex flex-col items-center justify-center">
+                            <div><span class="text-cyan-400 font-bold">[Q]</span> <span id="nameSkillQ">특수공격</span></div>
+                            <div id="cdQ" class="cooldown-overlay hidden">0.0s</div>
+                        </div>
+                        <div id="skillR" class="skill-box flex-1 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-slate-300 flex flex-col items-center justify-center">
+                            <div><span class="text-yellow-400 font-bold">[R]</span> <span id="nameSkillR">필살기</span></div>
+                            <div id="cdR" class="cooldown-overlay hidden">0.0s</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Timer & Stage Display & Pause Button -->
+                <div class="flex flex-col items-center">
+                    <div id="stageBadge" class="font-title text-sm text-amber-300 bg-slate-900/90 border border-amber-500/80 px-3 py-0.5 rounded-t-lg shadow">STAGE 1 / 5</div>
+                    <div class="font-title text-4xl text-yellow-400 bg-slate-900/90 border-2 border-yellow-500/80 px-4 py-0.5 rounded-b-xl shadow-lg" id="timer">60</div>
+                    <button onclick="togglePause()" class="pointer-events-auto mt-1.5 bg-slate-800/90 border border-amber-500/60 hover:bg-amber-600 text-amber-300 hover:text-white px-3 py-0.5 rounded text-xs font-bold transition">
+                        ⏸️ 일시정지 (P)
+                    </button>
+                </div>
+
+                <!-- Boss HP -->
+                <div class="w-2/5 flex flex-col items-end">
+                    <div class="flex items-center gap-2 mb-1">
+                        <span id="bossStateBadge" class="text-xs bg-red-950 border border-red-500/50 text-red-300 px-2 py-0.5 rounded font-bold hidden">공격 준비중!</span>
+                        <span id="bossNameDisplay" class="font-title text-xl text-red-500 drop-shadow">STAGE 1: 골목길 캔 쓰레기</span>
+                    </div>
+                    <div class="w-full bg-slate-900 border-2 border-slate-700 h-7 rounded-lg overflow-hidden p-0.5 shadow-inner relative">
+                        <div id="bossHpBar" class="h-full bg-gradient-to-l from-red-600 to-rose-400 rounded transition-all duration-150 ml-auto" style="width: 100%;"></div>
+                        <div id="bossHpRed" class="absolute top-0.5 right-0.5 bottom-0.5 bg-yellow-500/50 rounded transition-all duration-500 -z-10 ml-auto" style="width: 100%;"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Combo Display -->
+            <div id="comboContainer" class="absolute top-28 left-10 opacity-0 transition-all duration-150 transform -translate-x-4">
+                <div id="comboHits" class="font-title text-5xl text-yellow-300 italic drop-shadow-[0_4px_4px_rgba(0,0,0,0.8)]">2 HIT!</div>
+                <div id="comboText" class="font-bold text-xs text-orange-400 tracking-wider">COMBO DAMAGE</div>
+            </div>
+
+            <!-- Mobile Virtual Controls Container -->
+            <div id="mobileControls" class="absolute bottom-10 left-0 right-0 px-6 flex justify-between items-end pointer-events-none hidden md:hidden">
+                <!-- Left: Virtual Joystick -->
+                <div id="joystickZone" class="pointer-events-auto relative w-28 h-28 bg-slate-900/60 border-2 border-amber-500/50 rounded-full flex items-center justify-center backdrop-blur-sm touch-none">
+                    <div id="joystickKnob" class="w-12 h-12 bg-gradient-to-br from-amber-400 to-orange-600 rounded-full border-2 border-yellow-200 shadow-lg transform transition-transform duration-75"></div>
+                </div>
+
+                <!-- Right: Action Touch Buttons -->
+                <div class="pointer-events-auto flex flex-col items-end gap-2 touch-none">
+                    <!-- Skills Bar -->
+                    <div class="flex gap-2">
+                        <button id="btnSkillE" class="w-10 h-10 rounded-full bg-cyan-900/80 border border-cyan-400 text-cyan-200 font-title text-xs flex items-center justify-center active:scale-90 shadow-md">E</button>
+                        <button id="btnSkillQ" class="w-10 h-10 rounded-full bg-cyan-900/80 border border-cyan-400 text-cyan-200 font-title text-xs flex items-center justify-center active:scale-90 shadow-md">Q</button>
+                        <button id="btnSkillR" class="w-10 h-10 rounded-full bg-amber-900/80 border border-amber-400 text-amber-200 font-title text-xs flex items-center justify-center active:scale-90 shadow-md">R</button>
+                    </div>
+                    <!-- Primary Actions -->
+                    <div class="grid grid-cols-3 gap-2">
+                        <button id="btnGuard" class="w-12 h-12 rounded-full bg-blue-800/80 border-2 border-blue-400 text-white text-lg flex items-center justify-center active:scale-90 shadow-md">🛡️</button>
+                        <button id="btnJump" class="w-12 h-12 rounded-full bg-emerald-800/80 border-2 border-emerald-400 text-white text-lg flex items-center justify-center active:scale-90 shadow-md">⬆️</button>
+                        <button id="btnAttack" class="w-14 h-14 rounded-full bg-gradient-to-br from-red-500 to-rose-700 border-2 border-yellow-300 text-white text-xl flex items-center justify-center active:scale-90 shadow-xl">⚔️</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Controls Bar -->
+            <div id="controlsBar" class="w-full text-center text-xs text-slate-300 bg-slate-900/80 py-1.5 px-4 rounded-lg border border-slate-800 opacity-0 transition-opacity duration-300">
+                조작법: <span class="text-amber-300 font-bold">W/A/S/D 또는 방향키/터치 조이스틱</span> | <span class="text-amber-300 font-bold">Space / ⬆️</span> (점프) | <span class="text-amber-300 font-bold">Shift / 🛡️</span> (가드) | <span class="text-amber-300 font-bold">클릭 / ⚔️</span> (공격) | <span class="text-cyan-300 font-bold">E / Q / R</span> (무기별 특수 스킬)
+            </div>
+        </div>
+
+        <!-- 1. 시작 화면 Modal (START SCREEN) -->
+        <div id="startModal" class="absolute inset-0 bg-slate-950/90 backdrop-blur-md flex flex-col items-center justify-between p-6 z-20">
+            <div class="text-center mt-1">
+                <div class="inline-block bg-gradient-to-r from-amber-400 via-orange-500 to-red-600 text-transparent bg-clip-text">
+                    <h1 class="font-title text-5xl md:text-6xl tracking-wider drop-shadow-2xl italic">청소도구 대난투 3D</h1>
+                </div>
+                <p class="text-slate-300 font-bold mt-1 text-xs md:text-sm">리얼한 인체형 3D 캐릭으로 고유 무기 스킬을 활용해 악당들을 제압하세요!</p>
+                <!-- Assets by Kenney 출처 표기 -->
+                <p class="text-amber-400/90 font-semibold mt-1 text-xs">Assets by kenney</p>
+            </div>
+
+            <!-- Weapon Select Section (5종 무기) -->
+            <div class="w-full max-w-4xl my-2">
+                <h2 class="font-title text-lg text-amber-400 text-center mb-2 tracking-wide">무기 선택 (WEAPON SELECT)</h2>
+                <div class="grid grid-cols-5 gap-2 md:gap-3">
+                    <!-- Weapon 1 -->
+                    <div onclick="selectWeapon('duster')" id="card-duster" class="weapon-card selected p-3 rounded-xl cursor-pointer flex flex-col items-center text-center">
+                        <div class="w-10 h-10 mb-1 flex items-center justify-center text-3xl">🧹</div>
+                        <h3 class="font-title text-sm text-amber-300">먼지털이</h3>
+                        <p class="text-[10px] text-slate-300 mt-0.5">초고속 난무형 속공</p>
+                        <div class="w-full mt-2 text-[10px] space-y-0.5 text-slate-400">
+                            <div class="flex justify-between"><span>[Q]</span><span class="text-amber-300 font-bold">먼지돌풍</span></div>
+                            <div class="flex justify-between"><span>[R]</span><span class="text-yellow-300 font-bold">깃털난무</span></div>
+                        </div>
+                    </div>
+
+                    <!-- Weapon 2 -->
+                    <div onclick="selectWeapon('mop')" id="card-mop" class="weapon-card p-3 rounded-xl cursor-pointer flex flex-col items-center text-center">
+                        <div class="w-10 h-10 mb-1 flex items-center justify-center text-3xl">🧽</div>
+                        <h3 class="font-title text-sm text-cyan-300">대걸레</h3>
+                        <p class="text-[10px] text-slate-300 mt-0.5">긴 사거리 수분 강타</p>
+                        <div class="w-full mt-2 text-[10px] space-y-0.5 text-slate-400">
+                            <div class="flex justify-between"><span>[Q]</span><span class="text-cyan-300 font-bold">물대포</span></div>
+                            <div class="flex justify-between"><span>[R]</span><span class="text-yellow-300 font-bold">바닥강습</span></div>
+                        </div>
+                    </div>
+
+                    <!-- Weapon 3 -->
+                    <div onclick="selectWeapon('broom')" id="card-broom" class="weapon-card p-3 rounded-xl cursor-pointer flex flex-col items-center text-center">
+                        <div class="w-10 h-10 mb-1 flex items-center justify-center text-3xl">🧹</div>
+                        <h3 class="font-title text-sm text-emerald-300">빗자루</h3>
+                        <p class="text-[10px] text-slate-300 mt-0.5">광범위 회전제어</p>
+                        <div class="w-full mt-2 text-[10px] space-y-0.5 text-slate-400">
+                            <div class="flex justify-between"><span>[Q]</span><span class="text-emerald-300 font-bold">회전휩쓸기</span></div>
+                            <div class="flex justify-between"><span>[R]</span><span class="text-yellow-300 font-bold">낙엽풍차</span></div>
+                        </div>
+                    </div>
+
+                    <!-- Weapon 4: NEW 고압세척기 -->
+                    <div onclick="selectWeapon('washer')" id="card-washer" class="weapon-card p-3 rounded-xl cursor-pointer flex flex-col items-center text-center">
+                        <div class="w-10 h-10 mb-1 flex items-center justify-center text-3xl">💦</div>
+                        <h3 class="font-title text-sm text-blue-400">고압세척기</h3>
+                        <p class="text-[10px] text-slate-300 mt-0.5">원거리 파괴 사격</p>
+                        <div class="w-full mt-2 text-[10px] space-y-0.5 text-slate-400">
+                            <div class="flex justify-between"><span>[Q]</span><span class="text-blue-300 font-bold">고압분사</span></div>
+                            <div class="flex justify-between"><span>[R]</span><span class="text-yellow-300 font-bold">워터캐논</span></div>
+                        </div>
+                    </div>
+
+                    <!-- Weapon 5: NEW 스퀴지/유리닦이 -->
+                    <div onclick="selectWeapon('squeegee')" id="card-squeegee" class="weapon-card p-3 rounded-xl cursor-pointer flex flex-col items-center text-center">
+                        <div class="w-10 h-10 mb-1 flex items-center justify-center text-3xl">🪟</div>
+                        <h3 class="font-title text-sm text-fuchsia-300">스퀴지</h3>
+                        <p class="text-[10px] text-slate-300 mt-0.5">예리한 경량 베기</p>
+                        <div class="w-full mt-2 text-[10px] space-y-0.5 text-slate-400">
+                            <div class="flex justify-between"><span>[Q]</span><span class="text-fuchsia-300 font-bold">유막베기</span></div>
+                            <div class="flex justify-between"><span>[R]</span><span class="text-yellow-300 font-bold">유리세정</span></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <button id="startButton" onclick="startGame()" class="arcade-btn font-title text-2xl md:text-3xl text-yellow-300 px-10 py-2.5 rounded-full cursor-pointer tracking-wider my-1">
+                FIGHT! (3D 게임 시작)
+            </button>
+        </div>
+
+        <!-- 2. 일시정지 Modal -->
+        <div id="pauseModal" class="absolute inset-0 bg-slate-950/80 backdrop-blur-sm flex flex-col items-center justify-center p-8 z-25 hidden">
+            <h1 class="font-title text-6xl text-yellow-400 mb-4 drop-shadow tracking-wider">일시정지</h1>
+            <p class="text-slate-200 font-bold text-lg mb-6">게임이 일시정지 되었습니다 (P 키를 눌러 해제)</p>
+            <div class="flex gap-4">
+                <button onclick="togglePause()" class="arcade-btn font-title text-2xl text-yellow-300 px-8 py-2 rounded-full cursor-pointer">
+                    게임 계속하기
+                </button>
+                <button onclick="goToStartMenu()" class="arcade-btn-secondary font-title text-2xl text-white px-8 py-2 rounded-full cursor-pointer">
+                    시작화면으로
+                </button>
+            </div>
+        </div>
+
+        <!-- 3-1. 클리어 Modal -->
+        <div id="clearModal" class="absolute inset-0 bg-slate-950/85 backdrop-blur-md flex flex-col items-center justify-center p-8 z-30 hidden">
+            <h1 id="clearTitle" class="font-title text-6xl text-yellow-400 mb-2 drop-shadow tracking-wider">STAGE CLEAR!</h1>
+            <p id="clearSubText" class="text-lg text-slate-200 mb-2 font-bold">쓰레기 빌런을 퇴치했습니다!</p>
+            <p id="nextBossPreview" class="text-amber-300 font-bold mb-6 text-sm bg-slate-900/80 px-4 py-2 border border-amber-500/40 rounded-lg">다음 보스: ???</p>
+            
+            <div class="flex gap-4">
+                <button id="nextStageBtn" onclick="nextStage()" class="arcade-btn font-title text-2xl text-yellow-300 px-8 py-3 rounded-full cursor-pointer">
+                    다음 스테이지 도전 ➔
+                </button>
+                <button onclick="goToStartMenu()" class="arcade-btn-secondary font-title text-2xl text-white px-8 py-3 rounded-full cursor-pointer">
+                    시작화면으로
+                </button>
+            </div>
+        </div>
+
+        <!-- 3-2. 게임 오버 Modal -->
+        <div id="gameOverModal" class="absolute inset-0 bg-slate-950/85 backdrop-blur-md flex flex-col items-center justify-center p-8 z-30 hidden">
+            <h1 class="font-title text-7xl text-red-600 mb-2 drop-shadow tracking-wider">게임 오버</h1>
+            <p id="gameOverSubText" class="text-xl text-slate-200 mb-8 font-bold">체력이 다했습니다!</p>
+            
+            <div class="flex gap-4">
+                <button onclick="restartGame()" class="arcade-btn font-title text-2xl text-yellow-300 px-8 py-3 rounded-full cursor-pointer">
+                    다시 시도 (RETRY)
+                </button>
+                <button onclick="goToStartMenu()" class="arcade-btn-secondary font-title text-2xl text-white px-8 py-3 rounded-full cursor-pointer">
+                    시작화면으로
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- Audio Synthesizer ---
+        const AudioFX = {
+            ctx: null,
+            init() {
+                if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+            },
+            playSwing() {
+                if (!this.ctx) return;
+                const osc = this.ctx.createOscillator(), gain = this.ctx.createGain();
+                osc.type = 'sine'; osc.frequency.setValueAtTime(480, this.ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(100, this.ctx.currentTime + 0.14);
+                gain.gain.setValueAtTime(0.25, this.ctx.currentTime); gain.gain.linearRampToValueAtTime(0.01, this.ctx.currentTime + 0.14);
+                osc.connect(gain); gain.connect(this.ctx.destination); osc.start(); osc.stop(this.ctx.currentTime + 0.14);
+            },
+            playHit() {
+                if (!this.ctx) return;
+                const osc = this.ctx.createOscillator(), gain = this.ctx.createGain();
+                osc.type = 'triangle'; osc.frequency.setValueAtTime(220, this.ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(40, this.ctx.currentTime + 0.22);
+                gain.gain.setValueAtTime(0.45, this.ctx.currentTime); gain.gain.linearRampToValueAtTime(0.01, this.ctx.currentTime + 0.22);
+                osc.connect(gain); gain.connect(this.ctx.destination); osc.start(); osc.stop(this.ctx.currentTime + 0.22);
+            },
+            playBlock() {
+                if (!this.ctx) return;
+                const osc = this.ctx.createOscillator(), gain = this.ctx.createGain();
+                osc.type = 'square'; osc.frequency.setValueAtTime(360, this.ctx.currentTime);
+                osc.frequency.setValueAtTime(180, this.ctx.currentTime + 0.05);
+                gain.gain.setValueAtTime(0.2, this.ctx.currentTime); gain.gain.linearRampToValueAtTime(0.01, this.ctx.currentTime + 0.1);
+                osc.connect(gain); gain.connect(this.ctx.destination); osc.start(); osc.stop(this.ctx.currentTime + 0.1);
+            },
+            playSkill() {
+                if (!this.ctx) return;
+                const osc = this.ctx.createOscillator(), gain = this.ctx.createGain();
+                osc.type = 'sawtooth'; osc.frequency.setValueAtTime(320, this.ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(900, this.ctx.currentTime + 0.3);
+                gain.gain.setValueAtTime(0.3, this.ctx.currentTime); gain.gain.linearRampToValueAtTime(0.01, this.ctx.currentTime + 0.3);
+                osc.connect(gain); gain.connect(this.ctx.destination); osc.start(); osc.stop(this.ctx.currentTime + 0.3);
+            },
+            playDash() {
+                if (!this.ctx) return;
+                const osc = this.ctx.createOscillator(), gain = this.ctx.createGain();
+                osc.type = 'sine'; osc.frequency.setValueAtTime(240, this.ctx.currentTime);
+                osc.frequency.linearRampToValueAtTime(620, this.ctx.currentTime + 0.12);
+                gain.gain.setValueAtTime(0.2, this.ctx.currentTime); gain.gain.linearRampToValueAtTime(0.01, this.ctx.currentTime + 0.12);
+                osc.connect(gain); gain.connect(this.ctx.destination); osc.start(); osc.stop(this.ctx.currentTime + 0.12);
+            },
+            playWarning() {
+                if (!this.ctx) return;
+                const osc = this.ctx.createOscillator(), gain = this.ctx.createGain();
+                osc.type = 'sawtooth'; osc.frequency.setValueAtTime(650, this.ctx.currentTime);
+                osc.frequency.setValueAtTime(900, this.ctx.currentTime + 0.08);
+                gain.gain.setValueAtTime(0.15, this.ctx.currentTime); gain.gain.linearRampToValueAtTime(0.01, this.ctx.currentTime + 0.16);
+                osc.connect(gain); gain.connect(this.ctx.destination); osc.start(); osc.stop(this.ctx.currentTime + 0.16);
+            },
+            playKo() {
+                if (!this.ctx) return;
+                const osc = this.ctx.createOscillator(), gain = this.ctx.createGain();
+                osc.type = 'sawtooth'; osc.frequency.setValueAtTime(350, this.ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(30, this.ctx.currentTime + 1.0);
+                gain.gain.setValueAtTime(0.5, this.ctx.currentTime); gain.gain.linearRampToValueAtTime(0.01, this.ctx.currentTime + 1.0);
+                osc.connect(gain); gain.connect(this.ctx.destination); osc.start(); osc.stop(this.ctx.currentTime + 1.0);
+            }
+        };
+
+        // --- Game Setup Data ---
+        const ARENA_BOUND_X = 18;
+        const ARENA_BOUND_Z = 6;
+        const STAGE_CONFIGS = [
+            { stage: 1, name: "골목길 캔 쓰레기", maxHp: 100, scale: 1.0, color: 0x38bdf8, speed: 0.12, patterns: ['캔 던지기', '몸통 돌진', '캔 뚜껑 가드'] },
+            { stage: 2, name: "음식물 쓰레기 공작", maxHp: 140, scale: 1.15, color: 0x84cc16, speed: 0.16, patterns: ['슬러지 3연투척', '백스텝 후 강습', '악취 가스 방출'] },
+            { stage: 3, name: "강철 쓰레기통 킹", maxHp: 180, scale: 1.3, color: 0x94a3b8, speed: 0.18, patterns: ['철벽 반사 방어', '해머 지진파 강타', '뚜껑 밀쳐내기'] },
+            { stage: 4, name: "유독성 유기물 괴수", maxHp: 220, scale: 1.45, color: 0xa855f7, speed: 0.22, patterns: ['그림자 텔레포트 습격', '유독가스 3연사', '독성 장판 깔기'] },
+            { stage: 5, name: "최종장: 마왕 트래시 오메가", maxHp: 280, scale: 1.6, color: 0xef4444, speed: 0.26, patterns: ['종말의 검풍 3연타', '메테오 소환 폭격', '초고속 텔레포트 난무', '절대 방어막'] }
+        ];
+
+        // 무기 5종 확장 세팅 및 쿨타임
+        const WEAPONS = {
+            duster: { 
+                name: '먼지털이', damage: 8, reach: 3.5, speed: 180, color: 0xf59e0b, knocksBack: 0.25,
+                skills: {
+                    E: { name: '먼지 실드', maxCd: 12 },
+                    Q: { name: '먼지 돌풍', maxCd: 6 },
+                    R: { name: '깃털 난무', maxCd: 18 }
+                }
+            },
+            mop: { 
+                name: '대걸레', damage: 24, reach: 5.2, speed: 420, color: 0x06b6d4, knocksBack: 0.7,
+                skills: {
+                    E: { name: '수분 실드', maxCd: 12 },
+                    Q: { name: '물대포 강타', maxCd: 7 },
+                    R: { name: '바닥 닦기 강습', maxCd: 20 }
+                }
+            },
+            broom: { 
+                name: '빗자루', damage: 14, reach: 4.5, speed: 280, color: 0x10b981, knocksBack: 0.4,
+                skills: {
+                    E: { name: '바람 실드', maxCd: 12 },
+                    Q: { name: '회전 휩쓸기', maxCd: 8 },
+                    R: { name: '낙엽 대풍차', maxCd: 22 }
+                }
+            },
+            washer: {
+                name: '고압세척기', damage: 18, reach: 7.0, speed: 220, color: 0x3b82f6, knocksBack: 0.3,
+                skills: {
+                    E: { name: '고압 워터실드', maxCd: 12 },
+                    Q: { name: '고압 워터 분사', maxCd: 5 },
+                    R: { name: '하이드로 워터캐논', maxCd: 16 }
+                }
+            },
+            squeegee: {
+                name: '스퀴지', damage: 12, reach: 3.8, speed: 150, color: 0xe0e7ff, knocksBack: 0.35,
+                skills: {
+                    E: { name: '유막 반사막', maxCd: 10 },
+                    Q: { name: '유막 쾌속 베기', maxCd: 5 },
+                    R: { name: '유리 세정 광역참', maxCd: 15 }
+                }
+            }
+        };
+
+        let currentStage = 1, gameState = 'MENU', selectedWeaponType = 'duster';
+        let gameTime = 60, timerInterval = null, comboCount = 0, comboTimer = null;
+        let globalTime = 0;
+
+        // --- Three.js Setup ---
+        let scene, camera, renderer;
+        let particles = [], hitSparks = [], projectiles = [], skillEffects = [];
+        let player, boss;
+
+        function initThreeJS() {
+            const container = document.getElementById('threejs-container');
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x060814);
+            scene.fog = new THREE.FogExp2(0x060814, 0.02);
+
+            camera = new THREE.PerspectiveCamera(48, container.clientWidth / container.clientHeight, 0.1, 1000);
+            camera.position.set(0, 10, 24);
+            camera.lookAt(0, 2.0, 0);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            container.appendChild(renderer.domElement);
+
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+            scene.add(ambientLight);
+
+            const dirLight = new THREE.DirectionalLight(0xfffaed, 1.4);
+            dirLight.position.set(15, 30, 20);
+            dirLight.castShadow = true;
+            dirLight.shadow.mapSize.width = 2048;
+            dirLight.shadow.mapSize.height = 2048;
+            dirLight.shadow.camera.left = -30;
+            dirLight.shadow.camera.right = 30;
+            dirLight.shadow.camera.top = 20;
+            dirLight.shadow.camera.bottom = -20;
+            scene.add(dirLight);
+
+            const rimLight = new THREE.PointLight(0x38bdf8, 2.5, 35);
+            rimLight.position.set(-18, 12, -8);
+            scene.add(rimLight);
+
+            const fillLight = new THREE.PointLight(0xf59e0b, 1.5, 30);
+            fillLight.position.set(18, 5, 10);
+            scene.add(fillLight);
+
+            const floorGeo = new THREE.BoxGeometry(48, 2, 20);
+            const floorMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.3, metalness: 0.3 });
+            const floor = new THREE.Mesh(floorGeo, floorMat);
+            floor.position.y = -1;
+            floor.receiveShadow = true;
+            scene.add(floor);
+
+            const grid = new THREE.GridHelper(48, 32, 0xf59e0b, 0x334155);
+            grid.position.y = 0.01;
+            scene.add(grid);
+
+            for (let i = -24; i <= 24; i += 6) {
+                const pGeo = new THREE.CylinderGeometry(0.7, 0.9, 16, 16);
+                const pMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.6, metalness: 0.4 });
+                const pillar = new THREE.Mesh(pGeo, pMat);
+                pillar.position.set(i, 7, -10);
+                pillar.castShadow = true;
+                scene.add(pillar);
+            }
+
+            window.addEventListener('resize', onWindowResize);
+        }
+
+        function onWindowResize() {
+            const container = document.getElementById('threejs-container');
+            if (!container) return;
+            camera.aspect = container.clientWidth / container.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(container.clientWidth, container.clientHeight);
+        }
+
+        // --- 3D Weapon Creator (5종 무기) ---
+        function create3DWeaponMesh(type) {
+            const group = new THREE.Group();
+            if (type === 'duster') {
+                const handleGeo = new THREE.CylinderGeometry(0.08, 0.08, 2.2, 8);
+                const handleMat = new THREE.MeshStandardMaterial({ color: 0xd97706 });
+                const handle = new THREE.Mesh(handleGeo, handleMat);
+                handle.position.y = 1.1;
+                group.add(handle);
+
+                const featherGeo = new THREE.ConeGeometry(0.5, 1.4, 12);
+                const featherMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.9 });
+                const feather = new THREE.Mesh(featherGeo, featherMat);
+                feather.position.y = 2.4;
+                group.add(feather);
+            } else if (type === 'mop') {
+                const handleGeo = new THREE.CylinderGeometry(0.09, 0.09, 3.8, 8);
+                const handleMat = new THREE.MeshStandardMaterial({ color: 0x0284c7 });
+                const handle = new THREE.Mesh(handleGeo, handleMat);
+                handle.position.y = 1.9;
+                group.add(handle);
+
+                const mopHeadGeo = new THREE.BoxGeometry(0.8, 0.6, 0.8);
+                const mopHeadMat = new THREE.MeshStandardMaterial({ color: 0xe0f2fe, roughness: 0.9 });
+                const mopHead = new THREE.Mesh(mopHeadGeo, mopHeadMat);
+                mopHead.position.y = 3.8;
+                group.add(mopHead);
+            } else if (type === 'broom') {
+                const handleGeo = new THREE.CylinderGeometry(0.08, 0.08, 3.2, 8);
+                const handleMat = new THREE.MeshStandardMaterial({ color: 0x059669 });
+                const handle = new THREE.Mesh(handleGeo, handleMat);
+                handle.position.y = 1.6;
+                group.add(handle);
+
+                const broomHeadGeo = new THREE.ConeGeometry(0.7, 1.2, 8);
+                const broomHeadMat = new THREE.MeshStandardMaterial({ color: 0x10b981, roughness: 0.8 });
+                const broomHead = new THREE.Mesh(broomHeadGeo, broomHeadMat);
+                broomHead.position.y = 3.2;
+                broomHead.rotation.z = Math.PI;
+                group.add(broomHead);
+            } else if (type === 'washer') { // 고압 세척기 건
+                const gunBody = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.5, 1.8), new THREE.MeshStandardMaterial({ color: 0x1e3a8a, metalness: 0.6 }));
+                gunBody.position.y = 1.0;
+                group.add(gunBody);
+
+                const nozzle = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.12, 1.5, 12), new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.9 }));
+                nozzle.rotation.x = Math.PI / 2;
+                nozzle.position.set(0, 1.1, 1.2);
+                group.add(nozzle);
+
+                const tank = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 0.8, 12), new THREE.MeshStandardMaterial({ color: 0x3b82f6, roughness: 0.2 }));
+                tank.position.set(0, 0.6, -0.3);
+                group.add(tank);
+            } else if (type === 'squeegee') { // 스퀴지/유리닦이
+                const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 2.8, 8), new THREE.MeshStandardMaterial({ color: 0x475569 }));
+                handle.position.y = 1.4;
+                group.add(handle);
+
+                const rubberBar = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.15, 0.25), new THREE.MeshStandardMaterial({ color: 0x0284c7, metalness: 0.5 }));
+                rubberBar.position.y = 2.8;
+                group.add(rubberBar);
+
+                const blade = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.08, 0.05), new THREE.MeshStandardMaterial({ color: 0x38bdf8 }));
+                blade.position.set(0, 2.9, 0.1);
+                group.add(blade);
+            }
+            return group;
+        }
+
+        // --- 정교해진 사람 모양 3D 캐릭터 모델 ---
+        class Character3D {
+            constructor(isBoss = false) {
+                this.isBoss = isBoss;
+                this.mesh = new THREE.Group();
+
+                // 피부 및 복장 재질
+                const skinColor = isBoss ? 0xa855f7 : 0xfbcfe8;
+                const clothColor = isBoss ? 0x4c1d95 : 0x2563eb;
+                const pantsColor = isBoss ? 0x312e81 : 0x1e293b;
+
+                this.skinMat = new THREE.MeshStandardMaterial({ color: skinColor, roughness: 0.6 });
+                this.clothMat = new THREE.MeshStandardMaterial({ color: clothColor, roughness: 0.4 });
+                this.pantsMat = new THREE.MeshStandardMaterial({ color: pantsColor, roughness: 0.5 });
+                this.jointMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.8 });
+
+                // 1. 몸통 (상체)
+                this.torso = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.42, 1.4, 12), this.clothMat);
+                this.torso.position.y = 1.8;
+                this.torso.castShadow = true;
+                this.mesh.add(this.torso);
+
+                // 2. 목 & 머리
+                this.neck = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.22, 0.3, 10), this.skinMat);
+                this.neck.position.set(0, 0.82, 0);
+                this.torso.add(this.neck);
+
+                this.head = new THREE.Mesh(new THREE.SphereGeometry(0.48, 16, 16), this.skinMat);
+                this.head.position.set(0, 0.35, 0);
+                this.head.castShadow = true;
+                this.neck.add(this.head);
+
+                // 헤어 스타일
+                const hairMat = new THREE.MeshStandardMaterial({ color: isBoss ? 0x3b0764 : 0x78350f, roughness: 0.9 });
+                const hair = new THREE.Mesh(new THREE.SphereGeometry(0.51, 12, 12, 0, Math.PI * 2, 0, Math.PI * 0.6), hairMat);
+                hair.position.set(0, 0.05, 0);
+                this.head.add(hair);
+
+                // 이목구비 (눈 & 입)
+                const eyeMat = new THREE.MeshBasicMaterial({ color: isBoss ? 0xff0055 : 0x0f172a });
+                const eyeL = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 8), eyeMat);
+                eyeL.position.set(0.18, 0.05, 0.42);
+                const eyeR = eyeL.clone();
+                eyeR.position.x = -0.18;
+                this.head.add(eyeL); this.head.add(eyeR);
+
+                // 3. 관절 팔 구조 (어깨 - 상완 - 관절 - 하완 - 손)
+                this.leftArmGroup = new THREE.Group();
+                this.leftArmGroup.position.set(0.65, 0.55, 0);
+                this.torso.add(this.leftArmGroup);
+
+                const upperArmL = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.14, 0.7, 10), this.clothMat);
+                upperArmL.position.y = -0.35;
+                this.leftArmGroup.add(upperArmL);
+
+                this.leftForearm = new THREE.Group();
+                this.leftForearm.position.set(0, -0.7, 0);
+                this.leftArmGroup.add(this.leftForearm);
+
+                const lowerArmL = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.11, 0.65, 10), this.skinMat);
+                lowerArmL.position.y = -0.32;
+                this.leftForearm.add(lowerArmL);
+
+                // 오른팔 (무기 장착팔)
+                this.rightArmGroup = new THREE.Group();
+                this.rightArmGroup.position.set(-0.65, 0.55, 0);
+                this.torso.add(this.rightArmGroup);
+
+                const upperArmR = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.14, 0.7, 10), this.clothMat);
+                upperArmR.position.y = -0.35;
+                this.rightArmGroup.add(upperArmR);
+
+                this.rightForearm = new THREE.Group();
+                this.rightForearm.position.set(0, -0.7, 0);
+                this.rightArmGroup.add(this.rightForearm);
+
+                const lowerArmR = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.11, 0.65, 10), this.skinMat);
+                lowerArmR.position.y = -0.32;
+                this.rightForearm.add(lowerArmR);
+
+                // 무기 홀더 위치 (손 부위)
+                this.weaponHolder = new THREE.Group();
+                this.weaponHolder.position.set(0, -0.6, 0.1);
+                this.rightForearm.add(this.weaponHolder);
+
+                // 4. 관절 다리 구조 (허벅지 - 무릎관절 - 종아리 - 발)
+                this.leftLegGroup = new THREE.Group();
+                this.leftLegGroup.position.set(0.28, -0.7, 0);
+                this.torso.add(this.leftLegGroup);
+
+                const thighL = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.16, 0.8, 10), this.pantsMat);
+                thighL.position.y = -0.4;
+                this.leftLegGroup.add(thighL);
+
+                this.leftShinGroup = new THREE.Group();
+                this.leftShinGroup.position.set(0, -0.8, 0);
+                this.leftLegGroup.add(this.leftShinGroup);
+
+                const shinL = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.12, 0.75, 10), this.pantsMat);
+                shinL.position.y = -0.38;
+                this.leftShinGroup.add(shinL);
+
+                const footL = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.18, 0.45), this.jointMat);
+                footL.position.set(0, -0.75, 0.1);
+                this.leftShinGroup.add(footL);
+
+                // 오른다리
+                this.rightLegGroup = new THREE.Group();
+                this.rightLegGroup.position.set(-0.28, -0.7, 0);
+                this.torso.add(this.rightLegGroup);
+
+                const thighR = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.16, 0.8, 10), this.pantsMat);
+                thighR.position.y = -0.4;
+                this.rightLegGroup.add(thighR);
+
+                this.rightShinGroup = new THREE.Group();
+                this.rightShinGroup.position.set(0, -0.8, 0);
+                this.rightLegGroup.add(this.rightShinGroup);
+
+                const shinR = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.12, 0.75, 10), this.pantsMat);
+                shinR.position.y = -0.38;
+                this.rightShinGroup.add(shinR);
+
+                const footR = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.18, 0.45), this.jointMat);
+                footR.position.set(0, -0.75, 0.1);
+                this.rightShinGroup.add(footR);
+
+                // 방어막
+                const shieldGeo = new THREE.SphereGeometry(2.2, 16, 16);
+                const shieldMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.35, wireframe: true });
+                this.shieldMesh = new THREE.Mesh(shieldGeo, shieldMat);
+                this.shieldMesh.visible = false;
+                this.mesh.add(this.shieldMesh);
+
+                scene.add(this.mesh);
+
+                this.x = 0; this.y = 0; this.z = 0;
+                this.vx = 0; this.vy = 0; this.vz = 0;
+                this.facing = 1;
+                this.isGrounded = true;
+                this.hitStun = 0;
+                this.isAttacking = false;
+            }
+
+            setWeapon(type) {
+                while(this.weaponHolder.children.length > 0) {
+                    this.weaponHolder.remove(this.weaponHolder.children[0]);
+                }
+                const wMesh = create3DWeaponMesh(type);
+                wMesh.rotation.x = Math.PI / 2;
+                this.weaponHolder.add(wMesh);
+            }
+
+            updateAnimation(isMoving) {
+                const walkCycle = Math.sin(globalTime * 0.22);
+                const runAmp = isMoving ? 0.75 : 0.05;
+
+                // 자연스러운 관절 보행 애니메이션
+                this.leftLegGroup.rotation.x = walkCycle * runAmp;
+                this.rightLegGroup.rotation.x = -walkCycle * runAmp;
+
+                this.leftShinGroup.rotation.x = Math.max(0, -walkCycle * runAmp * 0.8);
+                this.rightShinGroup.rotation.x = Math.max(0, walkCycle * runAmp * 0.8);
+
+                this.leftArmGroup.rotation.x = -walkCycle * runAmp * 0.9;
+                this.leftForearm.rotation.x = -0.3;
+
+                if (!this.isAttacking) {
+                    this.rightArmGroup.rotation.x = walkCycle * runAmp * 0.9;
+                    this.rightArmGroup.rotation.z = -0.2;
+                    this.rightForearm.rotation.x = -0.2;
+                }
+
+                // 상체 호흡 및 점프 Y 반응
+                this.torso.position.y = 1.8 + Math.abs(Math.sin(globalTime * 0.22)) * 0.08 + this.y;
+                
+                this.mesh.position.x = THREE.MathUtils.lerp(this.mesh.position.x, this.x, 0.3);
+                this.mesh.position.z = THREE.MathUtils.lerp(this.mesh.position.z, this.z, 0.3);
+                
+                const targetRotationY = this.facing === 1 ? Math.PI / 2 : -Math.PI / 2;
+                const tiltZ = isMoving ? (this.facing * -0.08) : 0;
+                
+                this.mesh.rotation.y = THREE.MathUtils.lerp(this.mesh.rotation.y, targetRotationY, 0.25);
+                this.mesh.rotation.z = THREE.MathUtils.lerp(this.mesh.rotation.z, tiltZ, 0.2);
+
+                if (this.hitStun > 0) {
+                    this.torso.rotation.z = -0.35 * this.facing;
+                } else {
+                    this.torso.rotation.z = 0;
+                }
+            }
+        }
+
+        // --- Player Controller ---
+        class Player3D extends Character3D {
+            constructor() {
+                super(false);
+                this.hp = 100; this.maxHp = 100;
+                this.shieldTime = 0;
+                this.weapon = WEAPONS.duster;
+                this.attackCooldown = 0;
+                this.isDashing = false;
+                this.dashTimer = 0;
+
+                // 스킬 쿨타임 (프레임 단위 관리)
+                this.cooldowns = { E: 0, Q: 0, R: 0 };
+                this.reset(-6);
+            }
+
+            reset(x) {
+                this.x = x; this.y = 0; this.z = 0;
+                this.vx = 0; this.vy = 0; this.vz = 0;
+                this.hp = this.maxHp;
+                this.shieldTime = 0;
+                this.facing = 1;
+                this.cooldowns = { E: 0, Q: 0, R: 0 };
+                this.weapon = WEAPONS[selectedWeaponType];
+                this.setWeapon(selectedWeaponType);
+                this.mesh.position.set(x, 0, 0);
+
+                // UI 스킬명 세팅
+                document.getElementById('nameSkillE').textContent = this.weapon.skills.E.name;
+                document.getElementById('nameSkillQ').textContent = this.weapon.skills.Q.name;
+                document.getElementById('nameSkillR').textContent = this.weapon.skills.R.name;
+            }
+
+            useSkill(skillKey) {
+                if (this.hitStun > 0 || this.cooldowns[skillKey] > 0) return;
+
+                const skillInfo = this.weapon.skills[skillKey];
+                this.cooldowns[skillKey] = skillInfo.maxCd * 60; // 60 FPS 기준
+
+                AudioFX.playSkill();
+
+                // 1. 공통 E 스킬 (실드)
+                if (skillKey === 'E') {
+                    this.shieldTime = 180; // 3초
+                    create3DHitSparks(this.x, 2, this.z, this.weapon.color);
+                } 
+                // 2. 무기 5종 고유 Q 스킬
+                else if (skillKey === 'Q') {
+                    if (selectedWeaponType === 'duster') {
+                        create3DTornado(this.x + this.facing * 2.5, this.z, this.facing, 'duster_q');
+                    } else if (selectedWeaponType === 'mop') {
+                        create3DWaterBeam(this.x, this.z, this.facing);
+                    } else if (selectedWeaponType === 'broom') {
+                        create3DCircularSweep(this.x, this.z);
+                    } else if (selectedWeaponType === 'washer') { // 고압 워터 분사
+                        create3DPressureJet(this.x, this.z, this.facing);
+                    } else if (selectedWeaponType === 'squeegee') { // 유막 쾌속 베기
+                        this.dash(this.facing);
+                        boss.takeDamage(22, this.facing, 0.5);
+                    }
+                } 
+                // 3. 무기 5종 고유 R 스킬 (필살기)
+                else if (skillKey === 'R') {
+                    triggerScreenShake();
+                    if (selectedWeaponType === 'duster') {
+                        create3DFeatherStorm(this.x, this.z, this.facing);
+                    } else if (selectedWeaponType === 'mop') {
+                        this.vy = 0.6;
+                        setTimeout(() => {
+                            create3DMopSmash(boss.x, boss.z);
+                            boss.takeDamage(50, this.facing, 2.0);
+                        }, 300);
+                    } else if (selectedWeaponType === 'broom') {
+                        create3DTornado(boss.x, boss.z, 0, 'broom_r');
+                    } else if (selectedWeaponType === 'washer') { // 워터 캐논 폭발
+                        create3DHydroCannon(this.x, this.z, this.facing);
+                    } else if (selectedWeaponType === 'squeegee') { // 유리 세정 광역참
+                        create3DSqueegeeSlash(this.x, this.z);
+                    }
+                }
+
+                updateSkillUI();
+            }
+
+            dash(dirX) {
+                if (this.isDashing || this.hitStun > 0) return;
+                this.isDashing = true;
+                this.dashTimer = 10;
+                this.vx = dirX * 0.8;
+                AudioFX.playDash();
+            }
+
+            attack() {
+                if (this.attackCooldown > 0 || this.hitStun > 0 || this.isDashing) return;
+
+                this.isAttacking = true;
+                this.attackCooldown = Math.floor(this.weapon.speed / 16);
+                AudioFX.playSwing();
+
+                // 모션 각도 세밀 조절
+                this.rightArmGroup.rotation.x = -Math.PI / 1.8;
+                this.rightArmGroup.rotation.y = this.facing * 1.2;
+                this.rightForearm.rotation.x = -0.5;
+
+                setTimeout(() => {
+                    this.rightArmGroup.rotation.y = 0;
+                    this.rightForearm.rotation.x = 0;
+                    this.isAttacking = false;
+                }, 140);
+
+                // 고압세척기인 경우 기본 공격 시 물줄기 발사
+                if (selectedWeaponType === 'washer') {
+                    create3DProjectile(this.x + this.facing * 1.2, 1.8, this.z, this.facing * 0.55);
+                    return;
+                }
+
+                const targetX = this.x + this.facing * (this.weapon.reach * 0.5);
+                const dx = Math.abs(targetX - boss.x);
+                const dz = Math.abs(this.z - boss.z);
+                const dist3D = Math.sqrt(dx * dx + dz * dz);
+
+                if (dist3D < this.weapon.reach && dz < 2.5) {
+                    boss.takeDamage(this.weapon.damage, this.facing, this.weapon.knocksBack);
+                    addCombo();
+                }
+            }
+
+            takeDamage(amount, direction) {
+                if (this.shieldTime > 0) {
+                    AudioFX.playBlock();
+                    create3DHitSparks(this.x, 2, this.z, 0x38bdf8);
+                    return;
+                }
+
+                if (keys.guard) {
+                    amount = Math.floor(amount * 0.25);
+                    AudioFX.playBlock();
+                    create3DHitSparks(this.x, 2, this.z, 0x38bdf8);
+                } else {
+                    AudioFX.playHit();
+                    this.hitStun = 14;
+                    this.vx = direction * 0.4;
+                    create3DHitSparks(this.x, 2, this.z, 0xef4444);
+                    triggerScreenShake();
+                }
+
+                this.hp = Math.max(0, this.hp - amount);
+                updateHpBars();
+
+                if (this.hp <= 0) handleGameOver("플레이어의 체력이 0이 되었습니다!");
+            }
+
+            update() {
+                if (this.attackCooldown > 0) this.attackCooldown--;
+
+                // 쿨타임 차감
+                ['E', 'Q', 'R'].forEach(k => {
+                    if (this.cooldowns[k] > 0) {
+                        this.cooldowns[k]--;
+                    }
+                });
+                updateSkillUI();
+
+                if (this.shieldTime > 0) {
+                    this.shieldTime--;
+                    this.shieldMesh.visible = true;
+                    this.shieldMesh.rotation.y += 0.05;
+                } else {
+                    this.shieldMesh.visible = false;
+                }
+
+                if (this.hitStun > 0) {
+                    this.hitStun--;
+                    this.x += this.vx;
+                    this.vx *= 0.85;
+                } else if (this.isDashing) {
+                    this.dashTimer--;
+                    this.x += this.vx;
+                    if (this.dashTimer <= 0) this.isDashing = false;
+                } else {
+                    let moveX = 0;
+                    let moveZ = 0;
+
+                    if (keys.left) { moveX -= 1; this.facing = -1; }
+                    if (keys.right) { moveX += 1; this.facing = 1; }
+                    if (keys.up) { moveZ -= 1; }
+                    if (keys.down) { moveZ += 1; }
+
+                    const moveSpeed = 0.22;
+                    if (moveX !== 0 && moveZ !== 0) {
+                        this.vx = moveX * moveSpeed * 0.7071;
+                        this.vz = moveZ * moveSpeed * 0.7071;
+                    } else {
+                        this.vx = moveX * moveSpeed;
+                        this.vz = moveZ * moveSpeed;
+                    }
+
+                    if (keys.jump && this.isGrounded) {
+                        this.vy = 0.45;
+                        this.isGrounded = false;
+                    }
+
+                    this.x += this.vx;
+                    this.z += this.vz;
+                }
+
+                if (!this.isGrounded) {
+                    this.vy -= 0.025;
+                    this.y += this.vy;
+                    if (this.y <= 0) {
+                        this.y = 0;
+                        this.vy = 0;
+                        this.isGrounded = true;
+                    }
+                }
+
+                this.x = THREE.MathUtils.clamp(this.x, -ARENA_BOUND_X, ARENA_BOUND_X);
+                this.z = THREE.MathUtils.clamp(this.z, -ARENA_BOUND_Z, ARENA_BOUND_Z);
+
+                const isMoving = (Math.abs(this.vx) > 0.01 || Math.abs(this.vz) > 0.01);
+                this.updateAnimation(isMoving);
+            }
+        }
+
+        // --- Boss Controller ---
+        class Boss3D extends Character3D {
+            constructor() {
+                super(true);
+                this.aiState = 'NEUTRAL';
+                this.telegraphTimer = 0;
+                this.isReflecting = false;
+                this.reset(6);
+            }
+
+            reset(x) {
+                this.x = x; this.y = 0; this.z = 0;
+                this.vx = 0; this.vz = 0;
+                this.facing = -1;
+                this.isReflecting = false;
+                const config = STAGE_CONFIGS[currentStage - 1];
+                this.maxHp = config.maxHp;
+                this.hp = this.maxHp;
+                this.mesh.scale.set(config.scale, config.scale, config.scale);
+                this.clothMat.color.setHex(config.color);
+                this.mesh.position.set(x, 0, 0);
+                document.getElementById('bossNameDisplay').textContent = `STAGE ${currentStage}: ${config.name}`;
+            }
+
+            takeDamage(amount, direction, knockback) {
+                if (this.isReflecting) {
+                    AudioFX.playBlock();
+                    create3DHitSparks(this.x, 2, this.z, 0xfbbf24);
+                    player.takeDamage(10, -direction);
+                    return;
+                }
+
+                AudioFX.playHit();
+                this.hitStun = 12;
+                this.vx = direction * (knockback || 0.3);
+                create3DHitSparks(this.x, 2, this.z, STAGE_CONFIGS[currentStage - 1].color);
+                triggerScreenShake();
+
+                this.hp = Math.max(0, this.hp - amount);
+                updateHpBars();
+
+                if (this.hp <= 0) handleClear();
+            }
+
+            startTelegraph(patternName, duration) {
+                this.aiState = 'TELEGRAPH';
+                this.currentPattern = patternName;
+                this.telegraphTimer = duration;
+                AudioFX.playWarning();
+
+                const badge = document.getElementById('bossStateBadge');
+                badge.classList.remove('hidden');
+                badge.textContent = `${patternName} 경고!`;
+            }
+
+            executePattern() {
+                document.getElementById('bossStateBadge').classList.add('hidden');
+                this.aiState = 'ATTACKING';
+                const baseDmg = 10 + (currentStage * 4);
+
+                if (this.currentPattern === '슬러지 3연투척' || this.currentPattern === '유독가스 3연사' || this.currentPattern === '캔 던지기') {
+                    for (let i = 0; i < 3; i++) {
+                        setTimeout(() => {
+                            if (gameState === 'PLAYING' && this.hp > 0) {
+                                create3DProjectile(this.x, 1.8, this.z + (i - 1) * 1.2, this.facing * 0.38);
+                                AudioFX.playSwing();
+                            }
+                        }, i * 180);
+                    }
+                    setTimeout(() => { 
+                        if (this.aiState === 'ATTACKING') this.aiState = 'NEUTRAL'; 
+                    }, 600);
+                } else if (this.currentPattern === '그림자 텔레포트 습격' || this.currentPattern === '초고속 텔레포트 난무') {
+                    this.x = player.x - this.facing * 2.0;
+                    this.z = player.z;
+                    create3DHitSparks(this.x, 2, this.z, 0xa855f7);
+                    AudioFX.playDash();
+                    setTimeout(() => {
+                        if (gameState === 'PLAYING' && Math.abs(this.x - player.x) < 3.2 && Math.abs(this.z - player.z) < 2.2) {
+                            player.takeDamage(baseDmg + 5, this.facing);
+                        }
+                        if (this.aiState === 'ATTACKING') this.aiState = 'NEUTRAL';
+                    }, 250);
+                } else if (this.currentPattern === '해머 지진파 강타') {
+                    create3DMopSmash(boss.x, boss.z);
+                    AudioFX.playHit();
+                    if (player.isGrounded) {
+                        player.takeDamage(baseDmg + 8, this.facing);
+                    }
+                    setTimeout(() => { 
+                        if (this.aiState === 'ATTACKING') this.aiState = 'NEUTRAL'; 
+                    }, 400);
+                } else if (this.currentPattern === '철벽 반사 방어' || this.currentPattern === '절대 방어막' || this.currentPattern === '캔 뚜껑 가드') {
+                    this.isReflecting = true;
+                    this.shieldMesh.visible = true;
+                    AudioFX.playBlock();
+                    setTimeout(() => {
+                        this.isReflecting = false;
+                        this.shieldMesh.visible = false;
+                        if (this.aiState === 'ATTACKING') this.aiState = 'NEUTRAL';
+                    }, 1500);
+                } else if (this.currentPattern === '메테오 소환 폭격') {
+                    for (let i = 0; i < 5; i++) {
+                        setTimeout(() => {
+                            if (gameState === 'PLAYING' && this.hp > 0) {
+                                const rx = player.x + (Math.random() - 0.5) * 6;
+                                const rz = player.z + (Math.random() - 0.5) * 4;
+                                create3DProjectile(rx, 10, rz, 0);
+                            }
+                        }, i * 150);
+                    }
+                    setTimeout(() => { 
+                        if (this.aiState === 'ATTACKING') this.aiState = 'NEUTRAL'; 
+                    }, 800);
+                } else {
+                    const rushSpeed = this.facing * (0.5 + currentStage * 0.08);
+                    this.vx = rushSpeed;
+                    AudioFX.playSwing();
+                    
+                    let hitChecked = false;
+                    const checkInterval = setInterval(() => {
+                        if (!hitChecked && gameState === 'PLAYING') {
+                            const dx = Math.abs(this.x - player.x);
+                            const dz = Math.abs(this.z - player.z);
+                            if (dx < 3.5 && dz < 2.2) {
+                                player.takeDamage(baseDmg, this.facing);
+                                hitChecked = true;
+                            }
+                        }
+                    }, 50);
+
+                    setTimeout(() => {
+                        clearInterval(checkInterval);
+                        if (this.aiState === 'ATTACKING') this.aiState = 'NEUTRAL';
+                    }, 350);
+                }
+            }
+
+            updateAI() {
+                if (gameState !== 'PLAYING') return;
+
+                if (this.hitStun > 0) {
+                    this.hitStun--;
+                    this.x += this.vx;
+                    this.vx *= 0.85;
+                    if (this.hitStun <= 0 && this.aiState === 'ATTACKING') {
+                        this.aiState = 'NEUTRAL';
+                    }
+                    return;
+                }
+
+                this.x += this.vx;
+                this.z += this.vz;
+                this.vx *= 0.85;
+                this.vz *= 0.85;
+
+                this.x = THREE.MathUtils.clamp(this.x, -ARENA_BOUND_X, ARENA_BOUND_X);
+                this.z = THREE.MathUtils.clamp(this.z, -ARENA_BOUND_Z, ARENA_BOUND_Z);
+
+                this.facing = player.x >= this.x ? 1 : -1;
+
+                if (this.aiState === 'TELEGRAPH') {
+                    this.telegraphTimer--;
+                    if (this.telegraphTimer <= 0) {
+                        this.executePattern();
+                    }
+                } else if (this.aiState === 'NEUTRAL') {
+                    const dx = player.x - this.x;
+                    const dz = player.z - this.z;
+                    const dist = Math.sqrt(dx * dx + dz * dz);
+
+                    const speed = STAGE_CONFIGS[currentStage - 1].speed;
+                    if (dist > 2.0) {
+                        this.vx = (dx / dist) * speed;
+                        this.vz = (dz / dist) * speed;
+                    }
+
+                    const attackChance = 0.035 + (currentStage * 0.012);
+                    if (dist < 10.0 && Math.random() < attackChance) {
+                        const patterns = STAGE_CONFIGS[currentStage - 1].patterns;
+                        const selectedPattern = patterns[Math.floor(Math.random() * patterns.length)];
+                        const duration = Math.max(12, 30 - currentStage * 4);
+                        this.startTelegraph(selectedPattern, duration);
+                    }
+                }
+
+                const isMoving = (Math.abs(this.vx) > 0.01 || Math.abs(this.vz) > 0.01);
+                this.updateAnimation(isMoving);
+            }
+        }
+
+        // --- 고유 스킬 이펙트 함수들 ---
+
+        // 1. [먼지털이 Q] 고속 돌풍
+        function create3DTornado(x, z, direction, tag) {
+            const geo = new THREE.CylinderGeometry(0.2, 1.8, 4.0, 12, 1, true);
+            const color = tag === 'duster_q' ? 0xf59e0b : 0x10b981;
+            const mat = new THREE.MeshBasicMaterial({ color: color, wireframe: true, transparent: true, opacity: 0.8 });
+            const tornado = new THREE.Mesh(geo, mat);
+            tornado.position.set(x, 2, z);
+            tornado.userData = { type: 'tornado', vx: direction * 0.35, life: 60, tag: tag };
+            scene.add(tornado);
+            skillEffects.push(tornado);
+        }
+
+        // 2. [대걸레 Q] 물대포 강타
+        function create3DWaterBeam(x, z, direction) {
+            const geo = new THREE.CylinderGeometry(0.6, 0.6, 8, 16);
+            const mat = new THREE.MeshBasicMaterial({ color: 0x06b6d4, transparent: true, opacity: 0.8 });
+            const beam = new THREE.Mesh(geo, mat);
+            beam.rotation.z = Math.PI / 2;
+            beam.position.set(x + direction * 4, 1.5, z);
+            beam.userData = { type: 'water_beam', life: 20, dir: direction };
+            scene.add(beam);
+            skillEffects.push(beam);
+
+            const dx = Math.abs((x + direction * 4) - boss.x);
+            const dz = Math.abs(z - boss.z);
+            if (dx < 4.5 && dz < 2.0) {
+                boss.takeDamage(32, direction, 1.8);
+            }
+        }
+
+        // 3. [빗자루 Q] 회전 휩쓸기
+        function create3DCircularSweep(x, z) {
+            const geo = new THREE.RingGeometry(0.5, 4.5, 32);
+            const mat = new THREE.MeshBasicMaterial({ color: 0x10b981, side: THREE.DoubleSide, transparent: true, opacity: 0.8 });
+            const sweep = new THREE.Mesh(geo, mat);
+            sweep.rotation.x = -Math.PI / 2;
+            sweep.position.set(x, 0.2, z);
+            sweep.userData = { type: 'sweep', life: 25 };
+            scene.add(sweep);
+            skillEffects.push(sweep);
+
+            const dx = Math.abs(x - boss.x);
+            const dz = Math.abs(z - boss.z);
+            if (Math.sqrt(dx*dx + dz*dz) < 4.8) {
+                boss.takeDamage(28, player.facing, 0.8);
+            }
+        }
+
+        // 4. [신규: 고압세척기 Q] 고압 워터 제트 분사
+        function create3DPressureJet(x, z, direction) {
+            for (let i = 0; i < 5; i++) {
+                setTimeout(() => {
+                    if (gameState === 'PLAYING') {
+                        create3DProjectile(x + direction * 1.5, 1.8, z + (Math.random() - 0.5) * 0.8, direction * 0.6);
+                    }
+                }, i * 60);
+            }
+        }
+
+        // 5. [신규: 고압세척기 R] 하이드로 워터캐논 폭발
+        function create3DHydroCannon(x, z, direction) {
+            const geo = new THREE.SphereGeometry(2.5, 16, 16);
+            const mat = new THREE.MeshBasicMaterial({ color: 0x3b82f6, transparent: true, opacity: 0.85 });
+            const cannon = new THREE.Mesh(geo, mat);
+            cannon.position.set(x + direction * 5, 2.0, z);
+            scene.add(cannon);
+
+            setTimeout(() => {
+                scene.remove(cannon);
+                create3DHitSparks(x + direction * 5, 2.0, z, 0x60a5fa);
+            }, 300);
+
+            const dx = Math.abs((x + direction * 5) - boss.x);
+            const dz = Math.abs(z - boss.z);
+            if (dx < 3.8 && dz < 2.5) {
+                boss.takeDamage(55, direction, 2.2);
+            }
+        }
+
+        // 6. [신규: 스퀴지 R] 유리 세정 광역 3단 참격
+        function create3DSqueegeeSlash(x, z) {
+            for (let i = -1; i <= 1; i++) {
+                const geo = new THREE.RingGeometry(0.2, 5.0, 16, 1, 0, Math.PI);
+                const mat = new THREE.MeshBasicMaterial({ color: 0x38bdf8, side: THREE.DoubleSide, transparent: true, opacity: 0.8 });
+                const slash = new THREE.Mesh(geo, mat);
+                slash.rotation.x = -Math.PI / 3;
+                slash.rotation.z = i * 0.5;
+                slash.position.set(x + player.facing * 2, 1.8, z + i * 1.2);
+                slash.userData = { type: 'sweep', life: 20 };
+                scene.add(slash);
+                skillEffects.push(slash);
+            }
+
+            const dx = Math.abs(x - boss.x);
+            const dz = Math.abs(z - boss.z);
+            if (dx < 5.0 && dz < 3.0) {
+                boss.takeDamage(42, player.facing, 1.2);
+            }
+        }
+
+        // 7. [먼지털이 R] 깃털 난무
+        function create3DFeatherStorm(x, z, direction) {
+            for (let i = 0; i < 12; i++) {
+                setTimeout(() => {
+                    if (gameState === 'PLAYING') {
+                        const geo = new THREE.ConeGeometry(0.2, 0.8, 8);
+                        const mat = new THREE.MeshBasicMaterial({ color: 0xfbbf24 });
+                        const feather = new THREE.Mesh(geo, mat);
+                        feather.rotation.z = -direction * Math.PI / 2;
+                        feather.position.set(x + (Math.random() - 0.5), 1.5 + (Math.random() - 0.5), z + (Math.random() - 0.5));
+                        feather.userData = { type: 'feather', vx: direction * 0.45, life: 30 };
+                        scene.add(feather);
+                        skillEffects.push(feather);
+                    }
+                }, i * 40);
+            }
+        }
+
+        // 8. [대걸레 R] 바닥 닦기 강습 충격파
+        function create3DMopSmash(x, z) {
+            const geo = new THREE.RingGeometry(0.5, 5.5, 32);
+            const mat = new THREE.MeshBasicMaterial({ color: 0x0284c7, side: THREE.DoubleSide, transparent: true, opacity: 0.9 });
+            const smash = new THREE.Mesh(geo, mat);
+            smash.rotation.x = -Math.PI / 2;
+            smash.position.set(x, 0.1, z);
+            smash.userData = { type: 'smash', life: 30 };
+            scene.add(smash);
+            skillEffects.push(smash);
+        }
+
+        function create3DHitSparks(x, y, z, colorHex) {
+            for (let i = 0; i < 8; i++) {
+                const geo = new THREE.SphereGeometry(0.12 + Math.random() * 0.1, 8, 8);
+                const mat = new THREE.MeshBasicMaterial({ color: colorHex });
+                const particle = new THREE.Mesh(geo, mat);
+                particle.position.set(x, y, z);
+                particle.userData = {
+                    vx: (Math.random() - 0.5) * 0.4,
+                    vy: (Math.random() - 0.5) * 0.4 + 0.1,
+                    vz: (Math.random() - 0.5) * 0.4,
+                    life: 15
+                };
+                scene.add(particle);
+                particles.push(particle);
+            }
+        }
+
+        function create3DProjectile(x, y, z, vx) {
+            const geo = new THREE.DodecahedronGeometry(0.35);
+            const mat = new THREE.MeshStandardMaterial({ color: 0x38bdf8, roughness: 0.2 });
+            const proj = new THREE.Mesh(geo, mat);
+            proj.position.set(x, y, z);
+            proj.castShadow = true;
+            proj.userData = { vx: vx, vy: 0.05, vz: (boss.z - z) * 0.04 };
+            scene.add(proj);
+            projectiles.push(proj);
+        }
+
+        // --- Controls Input Listeners ---
+        const keys = { left: false, right: false, up: false, down: false, jump: false, guard: false };
+        let lastTapA = 0, lastTapD = 0;
+
+        function setupVirtualControls() {
+            const isTouchDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0) || window.innerWidth <= 768;
+            const mobileControls = document.getElementById('mobileControls');
+            if (isTouchDevice && mobileControls) {
+                mobileControls.classList.remove('hidden');
+            }
+
+            const joystickZone = document.getElementById('joystickZone');
+            const joystickKnob = document.getElementById('joystickKnob');
+            let joystickActive = false;
+            let joyCenterX = 0, joyCenterY = 0;
+            const maxRadius = 40;
+
+            if (joystickZone && joystickKnob) {
+                const handleTouchStart = (e) => {
+                    e.preventDefault();
+                    joystickActive = true;
+                    const rect = joystickZone.getBoundingClientRect();
+                    joyCenterX = rect.left + rect.width / 2;
+                    joyCenterY = rect.top + rect.height / 2;
+                    handleTouchMove(e);
+                };
+
+                const handleTouchMove = (e) => {
+                    if (!joystickActive) return;
+                    e.preventDefault();
+                    const touch = e.touches ? e.touches[0] : e;
+                    let dx = touch.clientX - joyCenterX;
+                    let dy = touch.clientY - joyCenterY;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+
+                    if (dist > maxRadius) {
+                        dx = (dx / dist) * maxRadius;
+                        dy = (dy / dist) * maxRadius;
+                    }
+
+                    joystickKnob.style.transform = `translate(${dx}px, ${dy}px)`;
+
+                    const threshold = 12;
+                    keys.left = dx < -threshold;
+                    keys.right = dx > threshold;
+                    keys.up = dy < -threshold;
+                    keys.down = dy > threshold;
+
+                    if (keys.left) player.facing = -1;
+                    if (keys.right) player.facing = 1;
+                };
+
+                const handleTouchEnd = (e) => {
+                    e.preventDefault();
+                    joystickActive = false;
+                    joystickKnob.style.transform = 'translate(0px, 0px)';
+                    keys.left = false;
+                    keys.right = false;
+                    keys.up = false;
+                    keys.down = false;
+                };
+
+                joystickZone.addEventListener('touchstart', handleTouchStart, { passive: false });
+                joystickZone.addEventListener('touchmove', handleTouchMove, { passive: false });
+                joystickZone.addEventListener('touchend', handleTouchEnd, { passive: false });
+                joystickZone.addEventListener('touchcancel', handleTouchEnd, { passive: false });
+            }
+
+            const bindBtn = (id, onPress, onRelease) => {
+                const btn = document.getElementById(id);
+                if (!btn) return;
+                btn.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    if (onPress) onPress();
+                }, { passive: false });
+                if (onRelease) {
+                    btn.addEventListener('touchend', (e) => {
+                        e.preventDefault();
+                        onRelease();
+                    }, { passive: false });
+                    btn.addEventListener('touchcancel', (e) => {
+                        e.preventDefault();
+                        onRelease();
+                    }, { passive: false });
+                }
+            };
+
+            bindBtn('btnAttack', () => { if (gameState === 'PLAYING') player.attack(); });
+            bindBtn('btnJump', () => { if (gameState === 'PLAYING' && player.isGrounded) { player.vy = 0.45; player.isGrounded = false; } });
+            bindBtn('btnGuard', () => { keys.guard = true; }, () => { keys.guard = false; });
+            bindBtn('btnSkillE', () => { if (gameState === 'PLAYING') player.useSkill('E'); });
+            bindBtn('btnSkillQ', () => { if (gameState === 'PLAYING') player.useSkill('Q'); });
+            bindBtn('btnSkillR', () => { if (gameState === 'PLAYING') player.useSkill('R'); });
+        }
+
+        window.addEventListener('keydown', (e) => {
+            const key = e.key.toLowerCase();
+            if (key === 'p') { togglePause(); return; }
+            if (gameState !== 'PLAYING') return;
+
+            if ((key === 'a' || e.key === 'ArrowLeft') && !keys.left) {
+                const now = Date.now();
+                if (now - lastTapA < 240) player.dash(-1);
+                lastTapA = now;
+            }
+            if ((key === 'd' || e.key === 'ArrowRight') && !keys.right) {
+                const now = Date.now();
+                if (now - lastTapD < 240) player.dash(1);
+                lastTapD = now;
+            }
+
+            if (key === 'a' || e.key === 'ArrowLeft') keys.left = true;
+            if (key === 'd' || e.key === 'ArrowRight') keys.right = true;
+            if (key === 'w' || e.key === 'ArrowUp') keys.up = true;
+            if (key === 's' || e.key === 'ArrowDown') keys.down = true;
+
+            if (e.code === 'Space') keys.jump = true;
+            if (e.key === 'Shift' || key === 'k') keys.guard = true;
+            if (key === 'j') player.attack();
+
+            if (key === 'e') player.useSkill('E');
+            if (key === 'q') player.useSkill('Q');
+            if (key === 'r') player.useSkill('R');
+        });
+
+        window.addEventListener('keyup', (e) => {
+            const key = e.key.toLowerCase();
+            if (key === 'a' || e.key === 'ArrowLeft') keys.left = false;
+            if (key === 'd' || e.key === 'ArrowRight') keys.right = false;
+            if (key === 'w' || e.key === 'ArrowUp') keys.up = false;
+            if (key === 's' || e.key === 'ArrowDown') keys.down = false;
+
+            if (e.code === 'Space') keys.jump = false;
+            if (e.key === 'Shift' || key === 'k') keys.guard = false;
+        });
+
+        window.addEventListener('mousedown', (e) => {
+            if (gameState === 'PLAYING' && e.button === 0) player.attack();
+        });
+
+        function triggerScreenShake() {
+            const container = document.getElementById('canvas-container');
+            container.classList.add('shake');
+            setTimeout(() => container.classList.remove('shake'), 220);
+        }
+
+        function addCombo() {
+            comboCount++;
+            const container = document.getElementById('comboContainer');
+            document.getElementById('comboHits').textContent = `${comboCount} HIT!`;
+            container.classList.remove('opacity-0', '-translate-x-4');
+            container.classList.add('opacity-100', 'translate-x-0');
+
+            clearTimeout(comboTimer);
+            comboTimer = setTimeout(() => {
+                container.classList.remove('opacity-100', 'translate-x-0');
+                container.classList.add('opacity-0', '-translate-x-4');
+                comboCount = 0;
+            }, 1200);
+        }
+
+        function updateHpBars() {
+            const pPct = Math.max(0, (player.hp / player.maxHp) * 100);
+            const bPct = Math.max(0, (boss.hp / boss.maxHp) * 100);
+
+            document.getElementById('playerHpBar').style.width = pPct + '%';
+            document.getElementById('playerHpRed').style.width = pPct + '%';
+            document.getElementById('bossHpBar').style.width = bPct + '%';
+            document.getElementById('bossHpRed').style.width = bPct + '%';
+        }
+
+        function updateSkillUI() {
+            if (!player) return;
+            ['E', 'Q', 'R'].forEach(k => {
+                const cdElem = document.getElementById(`cd${k}`);
+                const framesLeft = player.cooldowns[k];
+                if (framesLeft > 0) {
+                    cdElem.classList.remove('hidden');
+                    cdElem.textContent = (framesLeft / 60).toFixed(1) + 's';
+                } else {
+                    cdElem.classList.add('hidden');
+                }
+            });
+        }
+
+        function selectWeapon(weaponType) {
+            selectedWeaponType = weaponType;
+            ['duster', 'mop', 'broom', 'washer', 'squeegee'].forEach(type => {
+                const card = document.getElementById(`card-${type}`);
+                if (card) card.classList.toggle('selected', type === weaponType);
+            });
+            document.getElementById('playerWeaponBadge').textContent = WEAPONS[weaponType].name;
+        }
+
+        function togglePause() {
+            if (gameState !== 'PLAYING' && gameState !== 'PAUSED') return;
+            const pauseModal = document.getElementById('pauseModal');
+            if (gameState === 'PLAYING') {
+                gameState = 'PAUSED';
+                pauseModal.classList.remove('hidden');
+            } else {
+                gameState = 'PLAYING';
+                pauseModal.classList.add('hidden');
+            }
+        }
+
+        function startGame(stageToStart = 1) {
+            AudioFX.init();
+            
+            if (stageToStart === 1) {
+                gameTime = 60;
+            } else {
+                gameTime += 15;
+            }
+
+            currentStage = stageToStart;
+            document.getElementById('stageBadge').textContent = `STAGE ${currentStage} / 5`;
+
+            if (!player) player = new Player3D();
+            else player.reset(-6);
+
+            if (!boss) boss = new Boss3D();
+            else boss.reset(6);
+
+            particles.forEach(p => scene.remove(p));
+            skillEffects.forEach(s => scene.remove(s));
+            projectiles.forEach(p => scene.remove(p));
+            particles = []; skillEffects = []; projectiles = [];
+
+            document.getElementById('startModal').classList.add('hidden');
+            document.getElementById('pauseModal').classList.add('hidden');
+            document.getElementById('clearModal').classList.add('hidden');
+            document.getElementById('gameOverModal').classList.add('hidden');
+
+            document.getElementById('hud').classList.remove('opacity-0');
+            document.getElementById('controlsBar').classList.remove('opacity-0');
+
+            document.getElementById('timer').textContent = gameTime;
+            clearInterval(timerInterval);
+            timerInterval = setInterval(() => {
+                if (gameState === 'PLAYING') {
+                    gameTime--;
+                    document.getElementById('timer').textContent = gameTime;
+                    if (gameTime <= 0) {
+                        if (player.hp > boss.hp) handleClear();
+                        else handleGameOver("제한시간 초과!");
+                    }
+                }
+            }, 1000);
+
+            updateHpBars();
+            gameState = 'PLAYING';
+        }
+
+        function handleClear() {
+            gameState = 'CLEAR';
+            clearInterval(timerInterval);
+            AudioFX.playKo();
+
+            const clearTitle = document.getElementById('clearTitle');
+            const clearSubText = document.getElementById('clearSubText');
+            const nextPreview = document.getElementById('nextBossPreview');
+            const nextBtn = document.getElementById('nextStageBtn');
+
+            if (currentStage < 5) {
+                clearTitle.textContent = `STAGE ${currentStage} CLEAR!`;
+                clearSubText.textContent = `${STAGE_CONFIGS[currentStage - 1].name} 퇴치 완료! (+15초 보너스 타임)`;
+                nextPreview.textContent = `다음 보스: STAGE ${currentStage + 1} [${STAGE_CONFIGS[currentStage].name}] | 남은 시간: ${gameTime + 15}초`;
+                nextBtn.classList.remove('hidden');
+            } else {
+                clearTitle.textContent = "ALL STAGE CLEAR!! 🎉";
+                clearSubText.textContent = `모든 쓰레기 빌런을 퇴치했습니다! (남은시간: ${gameTime}초)`;
+                nextPreview.textContent = "최종 승리자: 3D 청소의 마스터!";
+                nextBtn.classList.add('hidden');
+            }
+
+            setTimeout(() => { document.getElementById('clearModal').classList.remove('hidden'); }, 600);
+        }
+
+        function nextStage() {
+            if (currentStage < 5) startGame(currentStage + 1);
+            else goToStartMenu();
+        }
+
+        function handleGameOver(reasonText) {
+            gameState = 'GAMEOVER';
+            clearInterval(timerInterval);
+            AudioFX.playHit();
+            document.getElementById('gameOverSubText').textContent = reasonText || "체력이 떨어졌습니다!";
+            setTimeout(() => { document.getElementById('gameOverModal').classList.remove('hidden'); }, 600);
+        }
+
+        function restartGame() { startGame(1); }
+
+        function goToStartMenu() {
+            gameState = 'MENU';
+            currentStage = 1;
+            clearInterval(timerInterval);
+            document.getElementById('pauseModal').classList.add('hidden');
+            document.getElementById('clearModal').classList.add('hidden');
+            document.getElementById('gameOverModal').classList.add('hidden');
+            document.getElementById('hud').classList.add('opacity-0');
+            document.getElementById('controlsBar').classList.add('opacity-0');
+            document.getElementById('startModal').classList.remove('hidden');
+        }
+
+        // --- Main Game Render Loop ---
+        function animateLoop() {
+            requestAnimationFrame(animateLoop);
+            globalTime++;
+
+            if (gameState === 'PLAYING') {
+                player.update();
+                boss.updateAI();
+
+                const midX = (player.x + boss.x) / 2;
+                const midZ = (player.z + boss.z) / 2;
+                const dist = Math.abs(player.x - boss.x);
+                
+                camera.position.x = THREE.MathUtils.lerp(camera.position.x, midX * 0.6, 0.08);
+                camera.position.y = THREE.MathUtils.lerp(camera.position.y, 10.0 + dist * 0.1, 0.08);
+                camera.position.z = THREE.MathUtils.lerp(camera.position.z, 22 + midZ * 0.5 + dist * 0.3, 0.08);
+                
+                camera.lookAt(midX * 0.4, 2.0, midZ * 0.3);
+
+                // Particle Physics
+                for (let i = particles.length - 1; i >= 0; i--) {
+                    const p = particles[i];
+                    p.position.x += p.userData.vx;
+                    p.position.y += p.userData.vy;
+                    p.position.z += p.userData.vz;
+                    p.userData.life--;
+                    if (p.userData.life <= 0) {
+                        scene.remove(p);
+                        particles.splice(i, 1);
+                    }
+                }
+
+                // Projectiles Physics
+                for (let i = projectiles.length - 1; i >= 0; i--) {
+                    const pr = projectiles[i];
+                    pr.position.x += pr.userData.vx;
+                    pr.position.y += pr.userData.vy;
+                    pr.position.z += pr.userData.vz || 0;
+                    pr.userData.vy -= 0.008;
+
+                    const targetChar = (pr.userData.vx > 0) ? boss : player;
+                    const dx = Math.abs(pr.position.x - targetChar.x);
+                    const dy = Math.abs(pr.position.y - (targetChar.y + 1.5));
+                    const dz = Math.abs(pr.position.z - targetChar.z);
+
+                    if (dx < 1.4 && dy < 1.5 && dz < 1.4) {
+                        targetChar.takeDamage(12, Math.sign(pr.userData.vx));
+                        scene.remove(pr);
+                        projectiles.splice(i, 1);
+                    } else if (pr.position.y <= 0) {
+                        scene.remove(pr);
+                        projectiles.splice(i, 1);
+                    }
+                }
+
+                // Skill Effects Physics Update
+                for (let i = skillEffects.length - 1; i >= 0; i--) {
+                    const sk = skillEffects[i];
+                    if (sk.userData.type === 'tornado') {
+                        sk.position.x += sk.userData.vx;
+                        sk.rotation.y += 0.25;
+                        sk.userData.life--;
+                        
+                        const dx = Math.abs(sk.position.x - boss.x);
+                        const dz = Math.abs(sk.position.z - boss.z);
+                        if (dx < 2.5 && dz < 2.0) {
+                            boss.takeDamage(1.5, Math.sign(sk.userData.vx || 1), 0.05);
+                        }
+                        if (sk.userData.life <= 0) {
+                            scene.remove(sk);
+                            skillEffects.splice(i, 1);
+                        }
+                    } else if (sk.userData.type === 'water_beam' || sk.userData.type === 'sweep' || sk.userData.type === 'smash') {
+                        sk.material.opacity -= 0.03;
+                        sk.userData.life--;
+                        if (sk.userData.life <= 0) {
+                            scene.remove(sk);
+                            skillEffects.splice(i, 1);
+                        }
+                    } else if (sk.userData.type === 'feather') {
+                        sk.position.x += sk.userData.vx;
+                        sk.userData.life--;
+                        const dx = Math.abs(sk.position.x - boss.x);
+                        const dz = Math.abs(sk.position.z - boss.z);
+                        if (dx < 1.5 && dz < 1.5) {
+                            boss.takeDamage(6, Math.sign(sk.userData.vx), 0.2);
+                            scene.remove(sk);
+                            skillEffects.splice(i, 1);
+                        } else if (sk.userData.life <= 0) {
+                            scene.remove(sk);
+                            skillEffects.splice(i, 1);
+                        }
+                    }
+                }
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        window.onload = () => {
+            initThreeJS();
+            setupVirtualControls();
+            animateLoop();
+        };
+    </script>
+</body>
+</html>
